@@ -4,9 +4,9 @@ After=multi-user.target
 
 [Service]
 Type=simple
-User=astro
-WorkingDirectory=/home/astro
-ExecStart=/home/astro/mavenv/bin/python -u /home/astro/mav_test.py
+User=cubesat
+WorkingDirectory=/home/cubesat/cubesat
+ExecStart=/home/cubesat/cubesat/mavenv/bin/python -u /home/cubesat/cubesat/mav_test.py
 Restart=always
 RestartSec=3
 
