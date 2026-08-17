@@ -1,0 +1,14 @@
+[Unit]
+Description=CubeSat MAVLink telemetry test sender
+After=multi-user.target
+
+[Service]
+Type=simple
+User=astro
+WorkingDirectory=/home/astro
+ExecStart=/home/astro/mavenv/bin/python -u /home/astro/mav_test.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
