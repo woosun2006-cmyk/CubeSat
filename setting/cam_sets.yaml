@@ -1,0 +1,31 @@
+# Camera settings for scripts in camera/, on this board:
+#   Raspberry Pi 4 Model B + Camera Module 2 (IMX219), via rpicam-vid.
+# Sensor modes (see camera/test_camera.py SENSOR_MODES):
+#   0: 640x480 @200fps   1: 1640x1232 @81fps
+#   2: 1920x1080 @47fps  3: 3280x2464 @21fps
+
+fpslog:
+  camera_id: 0
+  sensor_mode: 2       # index into SENSOR_MODES above
+  width: 1920
+  height: 1080
+  fps: 30              # requested fps; must be <= the mode's ceiling
+  fixed_shutter_us: 0  # 0 = auto exposure; e.g. 5000 to pin to 5ms
+  awb_mode: auto        # auto/incandescent/tungsten/fluorescent/indoor/daylight/cloudy
+  quality: 70          # rpicam-vid mjpeg quality, 1-100
+
+# camera/record_video.py - separate from fpslog above so tuning the fps
+# benchmark tool doesn't change actual recordings, or vice versa.
+record:
+  camera_id: 0
+  fps: 24
+  awb_mode: auto
+  quality: 70          # rpicam-vid mjpeg quality, 1-100
+
+# Software RGB gain correction applied on top of the camera's AWB (see the
+# color-correction sliders in the fpslog UI). Neutral until tuned - no color
+# cast has been measured on this camera module yet.
+wb_correction:
+  red_gain: 1.0
+  green_gain: 1.0
+  blue_gain: 1.0

@@ -1,3 +1,5 @@
 mavenv/
 __pycache__/
 *.pyc
+camera/video/
+camera/log/
