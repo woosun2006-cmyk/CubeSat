@@ -1,0 +1,27 @@
+[Unit]
+Description=CubeSat Pixhawk telemetry sender
+After=network-online.target wg-quick@wg0.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=jih
+WorkingDirectory=/home/jih/cubesat/gcs
+ExecStart=/home/jih/cubesat/gcs/gcs.sh run
+Restart=always
+RestartSec=3
+
+# 장치 경로와 목적지는 connection/connecting_port.yaml 이 단일 출처다.
+# gcs.sh 가 거기서 읽으므로 여기에 Environment= 를 두지 않는다.
+# 설정을 바꾸려면:
+#   cd ~/cubesat/gcs/connection && python3 change.py <이름>.csv
+#   sudo systemctl restart gcs
+
+# SD 카드에 아무것도 쓰지 않는다.
+# stdout = 1Hz 상태줄, stderr = 오류. 둘 다 버린다.
+# 진단이 필요하면 서비스를 멈추고 ./gcs.sh run 을 직접 실행하면 화면에 보인다.
+StandardOutput=null
+StandardError=null
+
+[Install]
+WantedBy=multi-user.target

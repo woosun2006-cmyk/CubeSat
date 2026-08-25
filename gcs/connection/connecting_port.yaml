@@ -1,0 +1,31 @@
+# connecting_port.yaml — 현재 활성 연결 설정
+#
+# gcs 폴더의 스크립트들은 모두 이 파일을 읽는다. 직접 고치지 말고
+# 사람별 CSV를 만들어 change.py 로 적용할 것.
+#
+#   python3 change.py MJ.csv       MJ 노트북 설정으로 전환
+#   python3 change.py --list       사용 가능한 CSV 목록
+#   python3 change.py --show       지금 값 보기
+#
+# 적용 후에는 서비스를 다시 시작해야 반영된다.
+#   sudo systemctl restart gcs
+
+active: MJ
+description: woosu 노트북 (Windows 11 WireGuard peer15)
+
+# 지상국 (텔레메트리를 받는 쪽)
+gcs_host: 10.0.0.16
+telemetry_port: 14550
+
+# 지상국 내부에서 대기 에이전트가 GCS에 넘겨주는 루프백 포트.
+# 파이는 쓰지 않지만 기록해 둔다.
+relay_port: 14551
+
+# 지상국이 자기 상태를 파이로 되보내는 포트. link.sh 가 여기서 듣는다.
+ack_port: 14552
+
+# 기체 쪽 설정 (사람이 바뀌어도 그대로)
+pixhawk_device: /dev/serial/by-id/usb-ArduPilot_PH4-mini_350032000150315939353320-if00
+pixhawk_baud: 460800
+send_hz: 1
+video_fps: 16

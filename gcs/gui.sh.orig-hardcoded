@@ -7,9 +7,8 @@ if [ -f "$SCRIPT_DIR/GUI.c" ]; then
 else
     PROJECT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/../gcs" && pwd)
 fi
-. "$PROJECT_DIR/conf.sh"
 BIN="$PROJECT_DIR/gui"
-PORT=${GUI_PORT:-$(conf telemetry_port 14550)}
+PORT=${GUI_PORT:-14550}
 GCS_SCRIPT="$PROJECT_DIR/gcs.sh"
 GCS_DESTINATION=${GCS_DESTINATION:-127.0.0.1:$PORT}
 GCS_LOG=${GCS_LOG:-/tmp/cubesat-gcs.log}

@@ -130,7 +130,7 @@ int main(int argc, char **argv)
             continue;
         }
         const uint64_t now = unix_time_ms();
-        if (now - last_report >= 1000) {
+        if (result > 0 || now - last_report >= 1000) {
             char packet[768];
             const size_t packet_size = make_packet(packet, sizeof(packet),
                                                    data_reader_telemetry(&reader));

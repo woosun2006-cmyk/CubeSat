@@ -1,0 +1,7 @@
+key,value
+name,MJ
+description,woosu 노트북 (Windows 11 WireGuard peer15)
+gcs_host,10.0.0.16
+telemetry_port,14550
+relay_port,14551
+ack_port,14552

@@ -7,12 +7,10 @@ if [ -f "$SCRIPT_DIR/gcs.c" ]; then
 else
     PROJECT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/../gcs" && pwd)
 fi
-. "$PROJECT_DIR/conf.sh"
-
 BIN="$PROJECT_DIR/gcs"
-DEVICE=${PIXHAWK_DEVICE:-$(conf pixhawk_device /dev/ttyACM0)}
-BAUD=${PIXHAWK_BAUD:-$(conf pixhawk_baud 460800)}
-DESTINATION=${GCS_DESTINATION:-$(conf gcs_host 10.0.0.16):$(conf telemetry_port 14550)}
+DEVICE=${PIXHAWK_DEVICE:-/dev/ttyACM0}
+BAUD=${PIXHAWK_BAUD:-460800}
+DESTINATION=${GCS_DESTINATION:-10.0.0.16:14550}
 
 build() {
     gcc -std=c11 -Wall -Wextra -Wpedantic -O2 \
@@ -29,15 +27,12 @@ case "${1:-run}" in
         exec "$BIN" "$DEVICE" "$DESTINATION" "$BAUD"
         ;;
     status)
-        echo "설정 파일: $CONF_FILE"
-        echo "활성 지상국: $(conf active -)  $(conf description -)"
-        echo "Pixhawk: $DEVICE @ $BAUD"
-        echo "UDP 목적지: $DESTINATION"
-        echo "송신 속도: $(conf send_hz 1) Hz"
         if [ -x "$BIN" ]; then
-            echo "gcs 바이너리: $BIN"
+            echo "gcs binary: $BIN"
+            echo "Pixhawk: $DEVICE @ $BAUD"
+            echo "UDP destination: $DESTINATION"
         else
-            echo "gcs 바이너리: 빌드 안 됨"
+            echo "gcs binary: not built"
             exit 1
         fi
         ;;
