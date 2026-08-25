@@ -1,0 +1,43 @@
+#!/bin/sh
+set -eu
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+if [ -f "$SCRIPT_DIR/gcs.c" ]; then
+    PROJECT_DIR=$SCRIPT_DIR
+else
+    PROJECT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/../gcs" && pwd)
+fi
+BIN="$PROJECT_DIR/gcs"
+DEVICE=${PIXHAWK_DEVICE:-/dev/ttyACM0}
+BAUD=${PIXHAWK_BAUD:-460800}
+DESTINATION=${GCS_DESTINATION:-10.0.0.2:14550}
+
+build() {
+    gcc -std=c11 -Wall -Wextra -Wpedantic -O2 \
+        "$PROJECT_DIR/gcs.c" "$PROJECT_DIR/data.c" "$PROJECT_DIR/MAVLink.c" -o "$BIN"
+}
+
+case "${1:-run}" in
+    build)
+        build
+        echo "gcs: built $BIN"
+        ;;
+    run)
+        [ -x "$BIN" ] || build
+        exec "$BIN" "$DEVICE" "$DESTINATION" "$BAUD"
+        ;;
+    status)
+        if [ -x "$BIN" ]; then
+            echo "gcs binary: $BIN"
+            echo "Pixhawk: $DEVICE @ $BAUD"
+            echo "UDP destination: $DESTINATION"
+        else
+            echo "gcs binary: not built"
+            exit 1
+        fi
+        ;;
+    *)
+        echo "usage: $0 {build|run|status}" >&2
+        exit 2
+        ;;
+esac

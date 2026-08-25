@@ -1,4 +1,5 @@
-#include "MAVLink.h"
+#define _DEFAULT_SOURCE
+#include "data.h"
 
 #include <errno.h>
 #include <inttypes.h>
@@ -37,14 +38,46 @@ static void print_telemetry(const MavlinkTelemetry *telemetry)
     fflush(stdout);
 }
 
+int data_reader_open(DataReader *reader, const char *device, int baud)
+{
+    if (!reader) {
+        errno = EINVAL;
+        return -1;
+    }
+    memset(reader, 0, sizeof(*reader));
+    reader->connection.fd = -1;
+    return mavlink_open(&reader->connection, device, baud);
+}
+
+int data_reader_poll(DataReader *reader, int timeout_ms)
+{
+    if (!reader) {
+        errno = EINVAL;
+        return -1;
+    }
+    const int result = mavlink_poll(&reader->connection, &reader->telemetry,
+                                    timeout_ms);
+    if (result > 0)
+        reader->telemetry.last_rx_time_us = monotonic_time_us();
+    return result;
+}
+
+const MavlinkTelemetry *data_reader_telemetry(const DataReader *reader)
+{
+    return reader ? &reader->telemetry : NULL;
+}
+
+void data_reader_close(DataReader *reader)
+{
+    if (reader)
+        mavlink_close(&reader->connection);
+}
+
 int data_read_loop(const char *device, int baud)
 {
-    MavlinkConnection connection;
-    MavlinkTelemetry telemetry;
-    memset(&telemetry, 0, sizeof(telemetry));
-    connection.fd = -1;
+    DataReader reader;
 
-    if (mavlink_open(&connection, device, baud) != 0) {
+    if (data_reader_open(&reader, device, baud) != 0) {
         fprintf(stderr, "data: cannot open Pixhawk serial %s at %d baud: %s\n",
                 device, baud, strerror(errno));
         return 1;
@@ -54,17 +87,16 @@ int data_read_loop(const char *device, int baud)
 
     uint64_t last_report = 0;
     for (;;) {
-        const int result = mavlink_poll(&connection, &telemetry, 1000);
+        const int result = data_reader_poll(&reader, 1000);
         if (result < 0) {
             fprintf(stderr, "data: serial read failed: %s\n", strerror(errno));
-            mavlink_close(&connection);
+            data_reader_close(&reader);
             return 1;
         }
         const uint64_t now = monotonic_time_us();
         if (result > 0 || now - last_report >= 1000000ull) {
             last_report = now;
-            telemetry.last_rx_time_us = now;
-            print_telemetry(&telemetry);
+            print_telemetry(data_reader_telemetry(&reader));
         }
     }
 }

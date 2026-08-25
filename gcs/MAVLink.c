@@ -1,3 +1,4 @@
+#define _DEFAULT_SOURCE
 #include "MAVLink.h"
 
 #include <errno.h>
