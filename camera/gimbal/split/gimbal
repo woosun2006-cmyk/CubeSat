@@ -1,0 +1,16 @@
+#!/bin/bash
+cd "$(dirname "$0")"
+
+pids=()
+cleanup() {
+    kill "${pids[@]}" 2>/dev/null
+    wait "${pids[@]}" 2>/dev/null
+}
+trap cleanup INT TERM
+
+./pitch.sh &
+pids+=("$!")
+./roll.sh &
+pids+=("$!")
+
+wait "${pids[@]}"

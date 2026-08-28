@@ -56,6 +56,7 @@ static uint8_t crc_extra_for(uint32_t msgid)
     case 24: return 24;  /* GPS_RAW_INT */
     case 30: return 39;  /* ATTITUDE */
     case 33: return 104; /* GLOBAL_POSITION_INT */
+    case 66: return 148; /* REQUEST_DATA_STREAM */
     default: return 0;
     }
 }
@@ -103,6 +104,12 @@ static void decode_frame(const uint8_t *frame, size_t header_len,
     const uint8_t *payload = frame + header_len;
     const uint32_t msgid = frame_msgid(frame);
 
+    if (msgid == 0) {
+        /* Learn the autopilot's sysid so stream requests reach it. */
+        telemetry->peer_system =
+            (frame[0] == MAVLINK_STX_V1) ? frame[3] : frame[5];
+    }
+
     if (msgid == 30 && payload_len >= 16) {
         telemetry->attitude_time_boot_ms = get_u32(payload);
         telemetry->roll = get_float(payload + 4);
@@ -132,6 +139,160 @@ static void decode_frame(const uint8_t *frame, size_t header_len,
                                 telemetry->longitude_e7 != 0);
     }
 }
+
+/* --- outbound ------------------------------------------------------------
+ *
+ * Reading alone is not enough. With every SR0_* parameter at 0 the Pixhawk's
+ * USB port emits HEARTBEAT and nothing else, so attitude_valid could never
+ * become 1 no matter how long we listened. A real GCS announces itself and
+ * asks for the streams it wants; that is what these do.
+ *
+ * Outbound frames are MAVLink v1: ArduPilot accepts them on any link, and
+ * they carry no signing or compatibility flags to get wrong.
+ */
+
+#define MAVLINK_OUR_SYSID 255u   /* the conventional ground-station sysid */
+#define MAVLINK_OUR_COMPID 190u  /* MAV_COMP_ID_MISSIONPLANNER */
+
+/* ArduPilot's autopilot component. The vehicle sysid is learned at runtime,
+   but the component id is fixed by the protocol. */
+#define MAVLINK_AUTOPILOT_COMPID 1u
+
+/* MAV_DATA_STREAM ids for the three messages this program decodes. */
+#define STREAM_EXTENDED_STATUS 2u   /* GPS_RAW_INT */
+#define STREAM_POSITION 6u          /* GLOBAL_POSITION_INT */
+#define STREAM_EXTRA1 10u           /* ATTITUDE */
+
+static size_t build_frame_v1(uint8_t *frame, uint8_t seq, uint8_t msgid,
+                             const uint8_t *payload, uint8_t payload_len)
+{
+    frame[0] = MAVLINK_STX_V1;
+    frame[1] = payload_len;
+    frame[2] = seq;
+    frame[3] = (uint8_t)MAVLINK_OUR_SYSID;
+    frame[4] = (uint8_t)MAVLINK_OUR_COMPID;
+    frame[5] = msgid;
+    memcpy(frame + 6, payload, payload_len);
+    const uint16_t crc = mavlink_crc(frame, 6, crc_extra_for(msgid));
+    frame[6 + payload_len] = (uint8_t)(crc & 0xffu);
+    frame[7 + payload_len] = (uint8_t)(crc >> 8);
+    return (size_t)payload_len + 8u;
+}
+
+/* The serial fd is non-blocking, so a short write is normal rather than an
+   error. Give up only if the port stays unwritable, which means it is gone. */
+static int write_all(int fd, const uint8_t *data, size_t len)
+{
+    size_t sent = 0;
+    int stalls = 0;
+    while (sent < len) {
+        const ssize_t written = write(fd, data + sent, len - sent);
+        if (written > 0) {
+            sent += (size_t)written;
+            continue;
+        }
+        if (written < 0 && (errno == EAGAIN || errno == EINTR)) {
+            if (++stalls > 100)
+                return -1;
+            usleep(1000);
+            continue;
+        }
+        return -1;
+    }
+    return 0;
+}
+
+int mavlink_send_heartbeat(MavlinkConnection *connection)
+{
+    if (!connection || connection->fd < 0) {
+        errno = EINVAL;
+        return -1;
+    }
+    /* HEARTBEAT payload in v1 wire order: custom_mode, type, autopilot,
+       base_mode, system_status, mavlink_version. */
+    uint8_t payload[9];
+    memset(payload, 0, sizeof(payload));
+    payload[4] = 6;  /* MAV_TYPE_GCS */
+    payload[5] = 8;  /* MAV_AUTOPILOT_INVALID -- we are not a flight stack */
+    payload[6] = 0;  /* base_mode */
+    payload[7] = 4;  /* MAV_STATE_ACTIVE */
+    payload[8] = 3;  /* mavlink_version */
+
+    uint8_t frame[32];
+    const size_t len = build_frame_v1(frame, connection->tx_seq++, 0,
+                                      payload, (uint8_t)sizeof(payload));
+    return write_all(connection->fd, frame, len);
+}
+
+/* Stream rate for one message class, held inside what the link and the
+   autopilot can both sustain. */
+static int clamp_hz(double send_hz, int low, int high)
+{
+    int rate = (int)(send_hz + 0.5);
+    if (rate < low)
+        rate = low;
+    if (rate > high)
+        rate = high;
+    return rate;
+}
+
+static int send_stream_request(MavlinkConnection *connection, uint8_t target,
+                               uint8_t stream_id, uint16_t rate_hz)
+{
+    /* REQUEST_DATA_STREAM payload in v1 wire order: req_message_rate,
+       target_system, target_component, req_stream_id, start_stop. */
+    uint8_t payload[6];
+    payload[0] = (uint8_t)(rate_hz & 0xffu);
+    payload[1] = (uint8_t)(rate_hz >> 8);
+    payload[2] = target;
+    payload[3] = (uint8_t)MAVLINK_AUTOPILOT_COMPID;
+    payload[4] = stream_id;
+    payload[5] = 1;  /* start */
+
+    uint8_t frame[32];
+    const size_t len = build_frame_v1(frame, connection->tx_seq++, 66,
+                                      payload, (uint8_t)sizeof(payload));
+    return write_all(connection->fd, frame, len);
+}
+
+int mavlink_request_streams(MavlinkConnection *connection,
+                            const MavlinkTelemetry *telemetry,
+                            double send_hz)
+{
+    if (!connection || connection->fd < 0) {
+        errno = EINVAL;
+        return -1;
+    }
+    /* Before the first HEARTBEAT arrives, fall back to ArduPilot's default
+       SYSID_THISMAV of 1 rather than skipping the request entirely. */
+    const uint8_t target = (telemetry && telemetry->peer_system)
+                               ? telemetry->peer_system : 1u;
+
+    /* Only what make_packet() actually puts on the wire. Asking for
+       MAV_DATA_STREAM_ALL would make the Pixhawk push twenty message types
+       across USB for nothing.
+
+       The streams have to keep up with the send rate, or the same value
+       goes out several times and the extra packets carry no information.
+       Attitude is the one that actually moves fast; GPS solves at 5 Hz at
+       best, so there is nothing to gain by asking it for more. */
+    const int attitude_hz = clamp_hz(send_hz, 4, 50);
+    const int position_hz = clamp_hz(send_hz, 3, 10);
+    const int status_hz = clamp_hz(send_hz, 2, 5);
+
+    int result = 0;
+    if (send_stream_request(connection, target, STREAM_EXTRA1,
+                            (uint16_t)attitude_hz) != 0)
+        result = -1;
+    if (send_stream_request(connection, target, STREAM_POSITION,
+                            (uint16_t)position_hz) != 0)
+        result = -1;
+    if (send_stream_request(connection, target, STREAM_EXTENDED_STATUS,
+                            (uint16_t)status_hz) != 0)
+        result = -1;
+    return result;
+}
+
 
 int mavlink_open(MavlinkConnection *connection, const char *device, int baud)
 {

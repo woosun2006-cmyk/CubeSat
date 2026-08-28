@@ -1,0 +1,12 @@
+# zero_point.yaml — 서보모터 영점(기준점) 설정
+#
+# gimbal 서보 두 개의 "영점" duty 값. 짐벌 프로그램은 시작할 때 먼저
+# 이 위치로 이동한 뒤, 자세값(pitch/roll)에 따라 이 값을 중심으로 움직인다.
+# zero_calib 으로 다시 잡을 수 있다.
+#
+#   ./zero_calib          WASD 로 조정 후 space 로 저장
+#
+# duty 범위는 PWM_RANGE=200 기준 10~20 (1.0ms~2.0ms), 15가 정중앙(1.5ms).
+
+pitch_zero_duty: 18   # PITCH_PIN(1, GPIO18) 영점
+roll_zero_duty: 15    # ROLL_PIN(26, GPIO12) 영점

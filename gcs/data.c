@@ -67,6 +67,21 @@ const MavlinkTelemetry *data_reader_telemetry(const DataReader *reader)
     return reader ? &reader->telemetry : NULL;
 }
 
+int data_reader_announce(DataReader *reader, int request_streams,
+                         double send_hz)
+{
+    if (!reader || reader->connection.fd < 0) {
+        errno = EINVAL;
+        return -1;
+    }
+    int result = mavlink_send_heartbeat(&reader->connection);
+    if (request_streams &&
+        mavlink_request_streams(&reader->connection,
+                                &reader->telemetry, send_hz) != 0)
+        result = -1;
+    return result;
+}
+
 void data_reader_close(DataReader *reader)
 {
     if (reader)

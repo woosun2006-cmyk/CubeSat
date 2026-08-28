@@ -10,6 +10,7 @@ typedef struct {
     size_t frame_len;
     size_t expected_len;
     uint8_t header_len;
+    uint8_t tx_seq;
 } MavlinkConnection;
 
 typedef struct {
@@ -34,11 +35,22 @@ typedef struct {
     uint64_t last_rx_time_us;
     uint32_t packets_received;
     uint32_t packets_bad_crc;
+
+    /* sysid of the autopilot, learned from its HEARTBEAT. Stream
+       requests have to be addressed to it. 0 until one arrives. */
+    uint8_t peer_system;
 } MavlinkTelemetry;
 
 int mavlink_open(MavlinkConnection *connection, const char *device, int baud);
 void mavlink_close(MavlinkConnection *connection);
 int mavlink_poll(MavlinkConnection *connection, MavlinkTelemetry *telemetry,
                  int timeout_ms);
+
+/* ArduPilot sends nothing but HEARTBEAT on a link until a GCS asks.
+   These two make this program behave like one. */
+int mavlink_send_heartbeat(MavlinkConnection *connection);
+int mavlink_request_streams(MavlinkConnection *connection,
+                            const MavlinkTelemetry *telemetry,
+                            double send_hz);
 
 #endif

@@ -24,6 +24,10 @@ relay_port: 14551
 # 지상국이 자기 상태를 파이로 되보내는 포트. link.sh 가 여기서 듣는다.
 ack_port: 14552
 
+# 파이에서 gui.sh 를 볼 때 gcs -> tee.py 로 넘기는 루프백 포트.
+# 외부에 열리지 않는다.
+tee_port: 14553
+
 # 기체 쪽 설정 (사람이 바뀌어도 그대로)
 pixhawk_device: /dev/serial/by-id/usb-ArduPilot_PH4-mini_350032000150315939353320-if00
 pixhawk_baud: 460800

@@ -1,1 +1,1 @@
-../gcs/gcs.sh
+../gcs/gui.sh

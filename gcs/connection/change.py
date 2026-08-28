@@ -29,7 +29,7 @@ CONF = os.path.join(HERE, "connecting_port.yaml")
 # CSV로 바꿀 수 있는 항목. 오타를 걸러내려고 명시해 둔다.
 ALLOWED = {
     "active", "name", "description",
-    "gcs_host", "telemetry_port", "relay_port", "ack_port",
+    "gcs_host", "telemetry_port", "relay_port", "ack_port", "tee_port",
     "pixhawk_device", "pixhawk_baud", "send_hz", "video_fps",
 }
 
