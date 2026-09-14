@@ -1,0 +1,7 @@
+key,value
+name,HJ_tailscale
+description,HJ laptop via Tailscale
+gcs_host,100.70.231.119
+telemetry_port,14556
+relay_port,14551
+ack_port,14552

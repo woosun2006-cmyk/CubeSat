@@ -1,0 +1,7 @@
+key,value
+name,TS_NAVY513
+description,TS_NAVY513 via Tailscale
+gcs_host,100.121.141.119
+telemetry_port,14556
+relay_port,14551
+ack_port,14552

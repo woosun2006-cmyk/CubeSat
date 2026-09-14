@@ -1,0 +1,7 @@
+key,value
+name,TS_DESKTOP-EI1RODG
+description,TS_DESKTOP-EI1RODG via Tailscale
+gcs_host,100.70.231.119
+telemetry_port,14556
+relay_port,14551
+ack_port,14552

@@ -125,11 +125,15 @@ static void load_settings(const char *path, record_settings_t *settings)
     fclose(file);
 }
 
+/* rpicam-vid 는 SIGINT 를 받아야 인코더를 비우고 mp4 의 moov 를 쓴 뒤 끝난다.
+ * SIGTERM 은 기본 동작 그대로 즉사라 moov 가 없는 재생 불가 파일이 남는다
+ * (2026-09-13 실측: TERM 0.05 초 만에 종료, 48 B / INT 0.2 초, 정상 재생).
+ * 그래서 무엇으로 멈추라고 하든 카메라에는 SIGINT 로 바꿔 전한다. */
 static void stop_child(int signum)
 {
     (void)signum;
     if (child_pid > 0) {
-        kill(child_pid, SIGTERM);
+        kill(child_pid, SIGINT);
     }
 }
 
@@ -237,7 +241,15 @@ int main(int argc, char **argv)
         sigaction(SIGTERM, &old_term, NULL);
         return 1;
     }
+    if (child_pid > 0) {
+        setpgid(child_pid, child_pid);  /* 자식 쪽 setpgid 와의 경쟁을 막는다 */
+    }
     if (child_pid == 0) {
+        /* 카메라를 자기 프로세스 그룹으로 뗀다. cubesat.sh 는 녹화를 그룹째
+         * TERM/KILL 로 정리하는데, 그 신호가 rpicam-vid 에 바로 꽂히면 위의
+         * SIGINT 변환을 거치지 않고 파일이 깨진다. 정지는 이 프로그램을
+         * 통해서만 전달되게 한다. */
+        setpgid(0, 0);
         char *const command[] = {
             "rpicam-vid",
             "--camera", camera_id,

@@ -2,8 +2,6 @@
 
 라즈베리파이에서 MAVLink 텔레메트리를 생성해 **ExpressLRS 무선 링크**를 통해 지상국(QGroundControl)으로 전송하는 테스트 시스템.
 
-현재는 실제 비행 컨트롤러 없이 파이가 직접 MAVLink 메시지를 만들어 보내는 **송신 테스트 단계**다.
-
 ---
 
 ## 통신 경로
@@ -56,33 +54,14 @@ Pocket 조종기 / TX Backpack
 
 ```
 cubesat/
-├── mav_test.py            MAVLink 텔레메트리 송신 (메인)
-├── loopback_jih.py        UART 루프백 점검 도구
-├── mavlink-test.service   systemd 유닛 원본
+├── ELRS/                  ELRS 링크 (mav.py 가 메인 송신, crsf_monitor.py,
+│                         loopback_jih.py, att_probe.py)
+├── LoRa/                  LoRa(E220) 링크
+├── gcs/                   LTE/VPN 링크와 GUI
+├── mavlink.service        systemd 유닛 원본
 ├── mavenv/                Python 가상환경 (git 제외)
 └── .gitignore
 ```
-
-### `mav_test.py`
-
-`/dev/serial0`을 460800 baud로 열고 `source_system=1`, `source_component=1`로 송신한다.
-
-| 주기 | 메시지 |
-|---|---|
-| 1초 | `HEARTBEAT` (QUADROTOR / ARDUPILOTMEGA / MAV_STATE_ACTIVE) |
-| 1초 | `GPS_RAW_INT`, `GLOBAL_POSITION_INT` |
-| 2초 | `NAMED_VALUE_FLOAT` / `NAMED_VALUE_INT` — `cpu_temp`, `sd_free`, `uptime_s`, `cam_count`, `cam_state` |
-| 10초 | `STATUSTEXT` — `"CubeSat telemetry alive; cams=5; storage ok"` |
-
-`cpu_temp`는 `/sys/class/thermal/thermal_zone0/temp`, `sd_free`는 루트 파티션 여유 공간(MB)에서 읽어 온다.
-
-좌표는 **고정 테스트값**이다 (위도 37.5665, 경도 126.9780, 고도 100 m — 서울). GPS 모듈을 붙이면 이 부분을 실측값으로 교체해야 한다.
-
-수신 측에서 들어오는 메시지는 `recv_match(blocking=False)`로 폴링해 표준 출력에 기록한다.
-
-### `loopback_jih.py`
-
-UART 배선 점검용. `/dev/serial0`을 **9600 baud**로 열고 `loopback test 0~4`를 쓴 뒤 되돌아오는 값을 읽어 출력한다. TX-RX를 직결한 상태에서 보낸 문자열이 그대로 돌아오면 UART 자체는 정상.
 
 ---
 
@@ -142,7 +121,7 @@ received from GCS: RADIO_STATUS RADIO_STATUS {rssi : 0, ...}
 
 ```bash
 sudo systemctl stop mavlink-test.service
-./mavenv/bin/python loopback_jih.py
+./mavenv/bin/python ELRS/loopback_jih.py
 sudo systemctl start mavlink-test.service
 ```
 
@@ -163,7 +142,7 @@ journalctl -u mavlink-test.service --since '20 seconds ago' | grep -c 'received 
 
 ### 지상국 쪽
 
-노트북을 `ExpressLRS Backpack` WiFi에 접속한 뒤 확인한다.
+노트북을 `ExpressLRS Backpack000000` WiFi에 접속한 뒤 확인한다.
 
 - `http://10.0.0.1` 에서 **Packets Downlink** 증가 → 파이 방향 데이터 수신 중
 - **Packets Uplink** 증가 → 지상국 방향 데이터 전달 중
@@ -176,27 +155,3 @@ python -c "import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.bin
 ```
 
 QGroundControl에서는 UDP 14550으로 연결하면 `HEARTBEAT`, `GPS_RAW_INT`, `GLOBAL_POSITION_INT`와 `cpu_temp` / `sd_free` / `uptime_s` 값이 표시된다.
-
----
-
-## 현재 상태
-
-**확인된 것**
-
-- 서비스가 `enabled` + `running` 상태로 부팅 시 자동 실행됨
-- 송신 · 수신 모두 1Hz로 동작 (20초 측정에서 각 20회)
-- UART 460800 baud 설정이 스크립트와 일치
-- XR1로부터 `RADIO_STATUS`가 되돌아옴 → `Pi ↔ XR1` UART 양방향 성립
-- QGroundControl에서 `HEARTBEAT`, `GPS_RAW_INT`, `GLOBAL_POSITION_INT`, `cpu_temp`, `sd_free`, `uptime_s` 수신 확인
-
-**미해결**
-
-- `RADIO_STATUS`의 `rssi` / `remrssi`가 계속 `0`으로 보고된다. ELRS Backpack이 해당 필드를 채우지 않는 것인지, RF 링크가 실제로 성립하지 않은 것인지 아직 구분하지 못했다. Pocket을 켠 상태에서 Backpack Web UI의 패킷 카운터와 함께 비교해야 판별할 수 있다.
-
----
-
-## 알려진 제약
-
-- **로그 기록량** — `mav_test.py`가 매 루프마다 `print`를 호출하고 journald가 이를 모두 기록하므로 SD 카드에 초당 약 2줄이 계속 쌓인다. 장기 운용 시 `journald.conf`의 `SystemMaxUse`로 상한을 두거나 출력 빈도를 줄이는 편이 좋다.
-- **고정 좌표** — 위치 데이터는 실제 측정값이 아닌 하드코딩된 값이다.
-- **포트 경합** — `/dev/serial0`을 여는 스크립트는 동시에 하나만 실행할 수 있다.

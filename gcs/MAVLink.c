@@ -117,11 +117,11 @@ static void decode_frame(const uint8_t *frame, size_t header_len,
         telemetry->yaw = get_float(payload + 12);
         telemetry->attitude_valid = 1;
     } else if (msgid == 24 && payload_len >= 30) {
-        telemetry->gps_fix_type = payload[8];
-        telemetry->latitude_e7 = get_i32(payload + 9);
-        telemetry->longitude_e7 = get_i32(payload + 13);
-        telemetry->altitude_mm = get_i32(payload + 17);
-        telemetry->ground_course_cdeg = get_u16(payload + 27);
+        telemetry->gps_fix_type = payload[28];
+        telemetry->latitude_e7 = get_i32(payload + 8);
+        telemetry->longitude_e7 = get_i32(payload + 12);
+        telemetry->altitude_mm = get_i32(payload + 16);
+        telemetry->ground_course_cdeg = get_u16(payload + 26);
         telemetry->gps_satellites = payload[29];
         telemetry->gps_valid = (telemetry->gps_fix_type >= 2 &&
                                 telemetry->latitude_e7 != 0 &&
@@ -135,8 +135,6 @@ static void decode_frame(const uint8_t *frame, size_t header_len,
         telemetry->velocity_y_cms = get_i16(payload + 22);
         telemetry->velocity_z_cms = get_i16(payload + 24);
         telemetry->ground_course_cdeg = get_u16(payload + 26);
-        telemetry->gps_valid = (telemetry->latitude_e7 != 0 &&
-                                telemetry->longitude_e7 != 0);
     }
 }
 
@@ -387,20 +385,44 @@ int mavlink_poll(MavlinkConnection *connection, MavlinkTelemetry *telemetry,
     } while (ready < 0 && errno == EINTR);
     if (ready <= 0)
         return ready;
-    uint8_t bytes[256];
-    const ssize_t count = read(connection->fd, bytes, sizeof(bytes));
-    if (count < 0) {
-        if (errno == EAGAIN || errno == EINTR)
-            return 0;
-        return -1;
-    }
+
+    /* Drain what the port has, not just one bufferful.
+     *
+     * One 256 B read per call used to be the ceiling on how fast we could
+     * consume the Pixhawk. The autopilot streams ATTITUDE plus the EXTENDED
+     * STATUS group together, so at high send rates the kernel buffer grew
+     * faster than we emptied it and the attitude we sampled was already
+     * stale -- at 50 Hz better than a quarter of the packets repeated the
+     * previous value. Reading until EAGAIN keeps the sampled telemetry
+     * current.
+     *
+     * The byte budget stops a fast talker from holding the loop here past
+     * the next send deadline; whatever is left is picked up on the next
+     * pass, one poll() later. 16 KiB is far more than a cycle's worth even
+     * at 100 Hz, so in practice the loop exits on EAGAIN. */
     int frames = 0;
-    for (ssize_t i = 0; i < count; ++i) {
-        const int result = parser_push(connection, bytes[i], telemetry);
-        if (result > 0) {
-            frames += result;
-            telemetry->last_rx_time_us = 0; /* filled by data.c's clock */
+    size_t drained = 0;
+    const size_t drain_budget = 16384;
+    while (drained < drain_budget) {
+        uint8_t bytes[1024];
+        const ssize_t count = read(connection->fd, bytes, sizeof(bytes));
+        if (count < 0) {
+            if (errno == EAGAIN || errno == EINTR)
+                break;
+            return -1;
         }
+        if (count == 0)
+            break;
+        drained += (size_t)count;
+        for (ssize_t i = 0; i < count; ++i) {
+            const int result = parser_push(connection, bytes[i], telemetry);
+            if (result > 0) {
+                frames += result;
+                telemetry->last_rx_time_us = 0; /* filled by data.c's clock */
+            }
+        }
+        if ((size_t)count < sizeof(bytes))
+            break; /* short read: the port is empty */
     }
     return frames;
 }

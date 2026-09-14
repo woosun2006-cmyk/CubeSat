@@ -73,7 +73,14 @@ cleanup() {
     # record.sh 는 카메라와 짐벌을 자식으로 둔다. 프로세스 그룹째 보내야
     # rpicam 이 혼자 남지 않는다 (setsid 로 그룹을 따로 떼어 두었다).
     kill -TERM "-$RECORD_PID" 2>/dev/null || kill -TERM "$RECORD_PID" 2>/dev/null || true
-    sleep 1
+    # 카메라가 mp4 를 마무리할 시간을 준다. 예전에는 1 초 뒤 KILL 해서
+    # 영상 끝부분(moov)이 안 써진 재생 불가 파일이 남았다. 보통 1 초 안에
+    # 끝나지만 인코더가 밀려 있으면 더 걸린다.
+    _waited=0
+    while kill -0 "$RECORD_PID" 2>/dev/null && [ "$_waited" -lt 15 ]; do
+        sleep 1
+        _waited=$((_waited + 1))
+    done
     kill -KILL "-$RECORD_PID" 2>/dev/null || true
     wait "$RECORD_PID" 2>/dev/null || true
 }

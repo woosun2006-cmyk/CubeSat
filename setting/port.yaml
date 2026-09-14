@@ -1,2 +1,35 @@
-# HTTP server ports used by scripts in camera/.
+# 프로젝트에 사용되는 장치들의 포트 넘버는 하드코딩하지 않고, 이 파일에서 해결한다.
+
+# --- 기체 시리얼 장치 ---
+pixhawk_device: /dev/ttyACM0
+pixhawk_baud: 115200
+
+lora_device: /dev/ttyAMA3
+lora_baud: 9600
+
+elrs_device: /dev/serial0
+elrs_baud: 460800
+
+# crsf_monitor.py 는 같은 UART 를 CRSF 원시 속도로 연다
+crsf_device: /dev/serial0
+crsf_baud: 420000
+
+# loopback_jih.py 시험용
+loopback_device: /dev/serial0
+loopback_baud: 9600
+
+# --- 주기 ---
+lora_send_interval: 0.1
+
+# --- 네트워크 ---
 fpslog: 8090
+mavlink_listen: 14553
+
+# --- ELRS 송신 주기 (mav.py) ---
+# 자세/위치만 elrs_send_hz 로 나가고 나머지는 각자 주기를 따른다.
+# 링크가 못 버티면 elrs_send_hz 부터 낮출 것.
+elrs_send_hz: 10
+elrs_imu_hz: 2
+elrs_gps_raw_hz: 1
+elrs_heartbeat_hz: 1
+elrs_named_interval: 10

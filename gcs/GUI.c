@@ -6,6 +6,7 @@
 #include <ncurses.h>
 #include <net/if.h>
 #include <poll.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -41,87 +42,105 @@ static unsigned long long monotonic_ms(void)
            (unsigned long long)now.tv_nsec / 1000000ull;
 }
 
-static const char *json_field(const char *json, const char *name)
+/*
+ * Wire format: the 46-byte binary frame gcs.c builds (see make_lora_packet).
+ * Both LTE and LoRa carry it, so this is the only parser the GUI needs.
+ *
+ *   magic 2 | version 1 | flags 1 | seq 4 | ts_ms 8 | roll/pitch/yaw 6
+ *   | fix 1 | sats 1 | lat 4 | lon 4 | alt 2 | rel_alt 2 | vx/vy/vz 6
+ *   | hdg 2 | CRC16 2
+ */
+#define TELEMETRY_FRAME_SIZE 46
+#define TELEMETRY_MAGIC0 0xC5
+#define TELEMETRY_MAGIC1 0x5A
+
+static uint16_t get_u16_le(const uint8_t *p)
 {
-    static char needle[64];
-    snprintf(needle, sizeof(needle), "\"%s\"", name);
-    const char *field = strstr(json, needle);
-    if (!field)
-        return NULL;
-    field = strchr(field + strlen(needle), ':');
-    return field ? field + 1 : NULL;
+    return (uint16_t)(p[0] | ((uint16_t)p[1] << 8));
 }
 
-static int json_double(const char *json, const char *name, double *value)
+static int16_t get_i16_le(const uint8_t *p)
 {
-    const char *field = json_field(json, name);
-    if (!field)
-        return -1;
-    char *end = NULL;
-    const double parsed = strtod(field, &end);
-    if (end == field)
-        return -1;
-    *value = parsed;
-    return 0;
+    return (int16_t)get_u16_le(p);
 }
 
-static int json_integer(const char *json, const char *name, int *value)
+static uint32_t get_u32_le(const uint8_t *p)
 {
-    double number;
-    if (json_double(json, name, &number) != 0)
-        return -1;
-    *value = (int)number;
-    return 0;
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
+           ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
 }
 
-static int json_bool(const char *json, const char *name, int *value)
+static int32_t get_i32_le(const uint8_t *p)
 {
-    const char *field = json_field(json, name);
-    if (!field)
-        return -1;
-    if (strncmp(field, "true", 4) == 0) {
-        *value = 1;
-        return 0;
-    }
-    if (strncmp(field, "false", 5) == 0) {
-        *value = 0;
-        return 0;
-    }
-    if (field[0] == '1') {
-        *value = 1;
-        return 0;
-    }
-    if (field[0] == '0') {
-        *value = 0;
-        return 0;
-    }
-    return -1;
+    return (int32_t)get_u32_le(p);
 }
 
-static int parse_telemetry(const char *json, Telemetry *telemetry)
+static uint64_t get_u64_le(const uint8_t *p)
 {
+    uint64_t v = 0;
+    for (int i = 7; i >= 0; --i)
+        v = (v << 8) | p[i];
+    return v;
+}
+
+/* CRC-16/CCITT-FALSE, matching the sender. */
+static uint16_t crc16_ccitt(const uint8_t *data, size_t length)
+{
+    uint16_t crc = 0xffff;
+    for (size_t i = 0; i < length; ++i) {
+        crc ^= (uint16_t)data[i] << 8;
+        for (int bit = 0; bit < 8; ++bit) {
+            if (crc & 0x8000)
+                crc = (uint16_t)((crc << 1) ^ 0x1021);
+            else
+                crc <<= 1;
+        }
+    }
+    return crc;
+}
+
+static int parse_telemetry(const uint8_t *frame, size_t length,
+                           Telemetry *telemetry)
+{
+    if (length != TELEMETRY_FRAME_SIZE)
+        return -1;
+    if (frame[0] != TELEMETRY_MAGIC0 || frame[1] != TELEMETRY_MAGIC1)
+        return -1;
+    if (frame[2] != 1)
+        return -1;  /* unknown protocol version */
+
+    /* A corrupt frame must leave the last good reading on screen rather
+       than painting garbage over it. */
+    const uint16_t received_crc = get_u16_le(frame + TELEMETRY_FRAME_SIZE - 2);
+    if (received_crc != crc16_ccitt(frame, TELEMETRY_FRAME_SIZE - 2))
+        return -1;
+
     Telemetry parsed;
     memset(&parsed, 0, sizeof(parsed));
-    if (json_double(json, "ts_ms", &parsed.roll) != 0)
-        return -1;
-    double timestamp;
-    if (json_double(json, "ts_ms", &timestamp) == 0)
-        parsed.timestamp_ms = (unsigned long long)timestamp;
-    (void)json_bool(json, "attitude_valid", &parsed.attitude_valid);
-    (void)json_double(json, "roll", &parsed.roll);
-    (void)json_double(json, "pitch", &parsed.pitch);
-    (void)json_double(json, "yaw", &parsed.yaw);
-    (void)json_bool(json, "gps_valid", &parsed.gps_valid);
-    (void)json_integer(json, "gps_fix", &parsed.gps_fix);
-    (void)json_integer(json, "gps_sats", &parsed.gps_sats);
-    (void)json_double(json, "lat", &parsed.latitude);
-    (void)json_double(json, "lon", &parsed.longitude);
-    (void)json_double(json, "alt_m", &parsed.altitude);
-    (void)json_double(json, "rel_alt_m", &parsed.relative_altitude);
-    (void)json_integer(json, "vx_cms", &parsed.velocity_x);
-    (void)json_integer(json, "vy_cms", &parsed.velocity_y);
-    (void)json_integer(json, "vz_cms", &parsed.velocity_z);
-    (void)json_integer(json, "hdg_cdeg", &parsed.heading);
+
+    const uint8_t flags = frame[3];
+    parsed.attitude_valid = (flags & 0x01) ? 1 : 0;
+    parsed.gps_valid = (flags & 0x02) ? 1 : 0;
+
+    parsed.timestamp_ms = get_u64_le(frame + 8);
+
+    parsed.roll  = get_i16_le(frame + 16) / 10000.0;
+    parsed.pitch = get_i16_le(frame + 18) / 10000.0;
+    parsed.yaw   = get_i16_le(frame + 20) / 10000.0;
+
+    parsed.gps_fix  = frame[22];
+    parsed.gps_sats = frame[23];
+
+    parsed.latitude  = get_i32_le(frame + 24) / 1e7;
+    parsed.longitude = get_i32_le(frame + 28) / 1e7;
+    parsed.altitude          = get_i16_le(frame + 32) / 10.0;
+    parsed.relative_altitude = get_i16_le(frame + 34) / 10.0;
+
+    parsed.velocity_x = get_i16_le(frame + 36);
+    parsed.velocity_y = get_i16_le(frame + 38);
+    parsed.velocity_z = get_i16_le(frame + 40);
+    parsed.heading    = get_u16_le(frame + 42);
+
     parsed.received_ms = monotonic_ms();
     *telemetry = parsed;
     return 0;
@@ -286,12 +305,11 @@ int main(int argc, char **argv)
         struct pollfd descriptor = { socket_fd, POLLIN, 0 };
         (void)poll(&descriptor, 1, 100);
         if (descriptor.revents & POLLIN) {
-            char packet[2048];
+            uint8_t packet[2048];
             ssize_t received;
-            while ((received = recv(socket_fd, packet, sizeof(packet) - 1,
+            while ((received = recv(socket_fd, packet, sizeof(packet),
                                     MSG_DONTWAIT)) > 0) {
-                packet[received] = '\0';
-                (void)parse_telemetry(packet, &telemetry);
+                (void)parse_telemetry(packet, (size_t)received, &telemetry);
             }
         }
         const int key = getch();

@@ -10,12 +10,12 @@
 # 적용 후에는 서비스를 다시 시작해야 반영된다.
 #   sudo systemctl restart gcs
 
-active: MJ
-description: woosu 노트북 (Windows 11 WireGuard peer15)
+active: TS_NAVY513
+description: TS_NAVY513 via Tailscale
 
 # 지상국 (텔레메트리를 받는 쪽)
-gcs_host: 10.0.0.16
-telemetry_port: 14550
+gcs_host: 100.121.141.119
+telemetry_port: 14556
 
 # 지상국 내부에서 대기 에이전트가 GCS에 넘겨주는 루프백 포트.
 # 파이는 쓰지 않지만 기록해 둔다.
@@ -29,7 +29,10 @@ ack_port: 14552
 tee_port: 14553
 
 # 기체 쪽 설정 (사람이 바뀌어도 그대로)
-pixhawk_device: /dev/serial/by-id/usb-ArduPilot_PH4-mini_350032000150315939353320-if00
+# 픽스호크는 USB 포트를 두 개 내놓는다(-if00=ttyACM0, -if02=ttyACM1).
+# mav.py 가 -if00 을 쓰므로 gcs 는 -if02 를 쓴다. 같은 포트를 둘이 열면
+# 바이트가 나뉘어 양쪽 MAVLink 파서가 모두 깨진다.
+pixhawk_device: /dev/serial/by-id/usb-ArduPilot_PH4-mini_350032000150315939353320-if02
 pixhawk_baud: 460800
-send_hz: 1
+send_hz: 10
 video_fps: 16

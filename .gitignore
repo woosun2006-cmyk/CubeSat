@@ -3,3 +3,7 @@ __pycache__/
 *.pyc
 camera/video/
 camera/log/
+*.bak*
+*.orig-*
+log/
+log/

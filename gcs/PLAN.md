@@ -74,6 +74,7 @@ Pi에서는 GUI를 실행하지 않는다. GUI 종료와 무관하게 telemetry 
 
 현재 Pi `gcs.c`가 UDP로 보내는 JSON 필드:
 
+- `seq`
 - `ts_ms`
 - `attitude_valid`, `roll`, `pitch`, `yaw`
 - `gps_valid`, `gps_fix`, `gps_sats`
@@ -81,6 +82,9 @@ Pi에서는 GUI를 실행하지 않는다. GUI 종료와 무관하게 telemetry 
 - `vx_cms`, `vy_cms`, `vz_cms`, `hdg_cdeg`
 
 자세각은 MAVLink 라디안을 노트북 GUI에서 degree로 변환해 표시한다. GPS가 없으면 `gps_valid=false`로 표시하고 IMU 화면은 계속 동작한다.
+
+`seq`는 telemetry packet마다 1씩 증가하는 공통 패킷 번호이며,
+LTE / LoRa / ELRS 링크별 패킷 누락 및 손실률 비교에 사용한다.
 
 ## 실행 정책
 

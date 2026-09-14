@@ -20,6 +20,30 @@ fi
 BIN="$PROJECT_DIR/gcs"
 DEVICE=${PIXHAWK_DEVICE:-$(conf pixhawk_device /dev/ttyACM0)}
 BAUD=${PIXHAWK_BAUD:-$(conf pixhawk_baud 460800)}
+
+# 보드를 갈면 /dev/serial/by-id 의 일련번호가 함께 바뀐다. yaml 에 적힌 경로가
+# 없을 때만 지금 붙어 있는 장치에서 찾는다 -- 적어 둔 경로가 살아 있으면
+# 그것을 그대로 쓰므로 기존 설정은 달라지지 않는다.
+# 순서는 ArduPilot -if02 > 아무 -if02 > ArduPilot 아무것 > ttyACM1 > ttyACM0.
+# ttyACM0(-if00)을 마지막에 두는 것은 그 포트가 ELRS 의 mav.py 몫이라서다.
+resolve_pixhawk() {
+    if [ -e "$1" ]; then
+        printf '%s
+' "$1"
+        return 0
+    fi
+    for _cand in /dev/serial/by-id/*ArduPilot*-if02                  /dev/serial/by-id/*-if02                  /dev/serial/by-id/*ArduPilot*                  /dev/ttyACM1 /dev/ttyACM0; do
+        if [ -e "$_cand" ]; then
+            printf '%s
+' "$_cand"
+            return 0
+        fi
+    done
+    # 하나도 없으면 적힌 값을 그대로 돌려준다. gcs 가 기다리며 이름을 찍는다.
+    printf '%s
+' "$1"
+}
+DEVICE=$(resolve_pixhawk "$DEVICE")
 DESTINATION=${GCS_DESTINATION:-$(conf gcs_host 10.0.0.16):$(conf telemetry_port 14550)}
 SEND_HZ=${GCS_SEND_HZ:-$(conf send_hz 1)}
 # 텔레메트리 원본을 남길 곳. 어디서 실행하든 같은 자리를 가리키도록

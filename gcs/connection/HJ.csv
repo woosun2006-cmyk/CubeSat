@@ -1,0 +1,7 @@
+key,value
+name,HJ
+description, LHJ 노트북 (Windows 11 WireGuard peer16)
+gcs_host,10.0.0.18
+telemetry_port,14556
+relay_port,14551
+ack_port,14552
